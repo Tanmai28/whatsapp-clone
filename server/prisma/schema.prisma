@@ -1,0 +1,222 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id Int @id @default(autoincrement())
+  email String @unique
+  name String
+  profilePicture String @default("")
+  about String @default("")
+  status String @default("Hey there! I'm using WhatsApp")
+  lastSeen DateTime @default(now())
+  isOnline Boolean @default(false)
+  isBlocked Boolean @default(false)
+  privacySettings Json @default("{}")
+  notificationPreferences Json @default("{}")
+  theme String @default("light")
+  language String @default("en")
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  sentMessages Messages[] @relation("sentMessages")
+  receivedMessages Messages[] @relation("receivedMessages")
+  sentReactions MessageReaction[]
+  groupMemberships GroupMember[]
+  createdGroups Group[] @relation("groupCreator")
+  sentCalls Call[] @relation("callInitiator")
+  receivedCalls Call[] @relation("callReceiver")
+  archivedChats ArchivedChat[]
+  mutedChats MutedChat[]
+  chatSettings ChatSettings?
+  statusUpdates StatusUpdate[]
+  createdBroadcastLists BroadcastList[]
+  
+  // Blocked users relation
+  blockedUsers User[] @relation("UserBlockedUsers")
+  blockedBy User[] @relation("UserBlockedUsers")
+}
+
+model Messages {
+  id Int @id @default(autoincrement())
+  sender User @relation("sentMessages", fields: [senderId], references: [id])
+  senderId Int
+  receiver User @relation("receivedMessages", fields: [receiverId], references: [id])
+  receiverId Int
+  groupId Int?
+  type String @default("text") // text, image, audio, video, document, location, contact, sticker
+  messages String 
+  messageStatus String @default("sent") // sent, delivered, read
+  isReply Boolean @default(false)
+  replyToMessageId Int?
+  replyToMessage Messages? @relation("repliedMessages", fields: [replyToMessageId], references: [id])
+  repliedMessages Messages[] @relation("repliedMessages")
+  isForwarded Boolean @default(false)
+  forwardedFrom String?
+  isPinned Boolean @default(false)
+  isDeleted Boolean @default(false)
+  deletedAt DateTime?
+  isArchived Boolean @default(false)
+  isMuted Boolean @default(false)
+  metadata Json? // For additional message data like file size, duration, etc.
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  reactions MessageReaction[]
+  group Group? @relation(fields: [groupId], references: [id])
+  pinnedMessages PinnedMessage[]
+}
+
+model MessageReaction {
+  id Int @id @default(autoincrement())
+  message Messages @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId Int
+  user User @relation(fields: [userId], references: [id])
+  userId Int
+  reaction String // emoji like 👍, ❤️, 😂, etc.
+  createdAt DateTime @default(now())
+  
+  @@unique([messageId, userId])
+}
+
+model Group {
+  id Int @id @default(autoincrement())
+  name String
+  description String?
+  profilePicture String @default("")
+  inviteLink String? @unique
+  isPrivate Boolean @default(false)
+  maxMembers Int @default(256)
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  creator User @relation("groupCreator", fields: [creatorId], references: [id])
+  creatorId Int
+  members GroupMember[]
+  messages Messages[]
+  pinnedMessages PinnedMessage[]
+}
+
+model GroupMember {
+  id Int @id @default(autoincrement())
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId Int
+  user User @relation(fields: [userId], references: [id])
+  userId Int
+  role String @default("member") // member, admin, creator
+  joinedAt DateTime @default(now())
+  isMuted Boolean @default(false)
+  muteUntil DateTime?
+  
+  @@unique([groupId, userId])
+}
+
+model Call {
+  id Int @id @default(autoincrement())
+  initiator User @relation("callInitiator", fields: [initiatorId], references: [id])
+  initiatorId Int
+  receiver User @relation("callReceiver", fields: [receiverId], references: [id])
+  receiverId Int
+  groupId Int?
+  callType String // voice, video
+  status String // incoming, ongoing, ended, missed, rejected
+  duration Int? // in seconds
+  startedAt DateTime @default(now())
+  endedAt DateTime?
+  isRecorded Boolean @default(false)
+  recordingUrl String?
+  quality String @default("auto") // auto, low, medium, high
+  
+  // Relations
+  recordings CallRecording[]
+}
+
+model ChatSettings {
+  id Int @id @default(autoincrement())
+  user User @relation(fields: [userId], references: [id])
+  userId Int @unique
+  wallpaper String @default("")
+  fontSize String @default("medium")
+  enterToSend Boolean @default(true)
+  mediaVisibility Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ArchivedChat {
+  id Int @id @default(autoincrement())
+  user User @relation(fields: [userId], references: [id])
+  userId Int
+  chatUserId Int
+  archivedAt DateTime @default(now())
+  
+  @@unique([userId, chatUserId])
+}
+
+model MutedChat {
+  id Int @id @default(autoincrement())
+  user User @relation(fields: [userId], references: [id])
+  userId Int
+  chatUserId Int
+  mutedUntil DateTime?
+  isPermanentlyMuted Boolean @default(false)
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, chatUserId])
+}
+
+model PinnedMessage {
+  id Int @id @default(autoincrement())
+  message Messages @relation(fields: [messageId], references: [id])
+  messageId Int
+  group Group? @relation(fields: [groupId], references: [id])
+  groupId Int?
+  pinnedBy Int
+  pinnedAt DateTime @default(now())
+  
+  @@unique([messageId, groupId])
+}
+
+model StatusUpdate {
+  id Int @id @default(autoincrement())
+  user User @relation(fields: [userId], references: [id])
+  userId Int
+  content String
+  type String // text, image, video
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model BroadcastList {
+  id Int @id @default(autoincrement())
+  name String
+  creator User @relation(fields: [creatorId], references: [id])
+  creatorId Int
+  members Int[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CallRecording {
+  id Int @id @default(autoincrement())
+  call Call @relation(fields: [callId], references: [id])
+  callId Int
+  recordingUrl String
+  duration Int
+  fileSize Int
+  createdAt DateTime @default(now())
+}
